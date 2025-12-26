@@ -14,6 +14,27 @@ class ModsTab:
     inactive_mod_search_text = ""
 
     @staticmethod
+    def on_sync_mods_clicked():
+        """
+        Простая синхронная версия. Выполняет всю работу последовательно.
+        """
+        logging.info("Начинаем синхронизацию модов...")
+        
+        changes_were_made = ModManager.sync_workshop_mods()
+        
+        if changes_were_made:
+            logging.info("Изменения найдены, перезагружаем список модов.")
+            ModManager.load_mods()
+            ModsTab.render_mods()
+        else:
+            logging.info("Изменений не найдено, UI не обновлялся.")
+
+    @staticmethod
+    def on_activate_all_clicked():
+        ModManager.activate_all_mods()
+        ModsTab.render_mods()
+
+    @staticmethod
     def create():
         with dpg.tab(
             label=loc.get_string("mod-tab-label"), parent="main_tab_bar", tag="mod_tab"
@@ -34,6 +55,16 @@ class ModsTab:
             )
             with dpg.tooltip("activate_all_button"):
                 dpg.add_text(loc.get_string("btn-activate-all-desc"))
+
+            dpg.add_button(
+                    label=loc.get_string("btn-sync-workshop"),
+                    callback=ModsTab.on_sync_mods_clicked,
+                    tag="sync_workshop_button"
+                )
+            with dpg.tooltip("sync_workshop_button"): # Используем правильный tag
+                dpg.add_text(loc.get_string("tooltip-sync-workshop"))
+
+            dpg.add_text("", tag="sync_status_text")
 
             with dpg.group(horizontal=True):
                 dpg.add_text(
@@ -111,11 +142,6 @@ class ModsTab:
                     ):
                         pass
 
-        ModsTab.render_mods()
-
-    @staticmethod
-    def on_activate_all_clicked():
-        ModManager.activate_all_mods()
         ModsTab.render_mods()
 
     @staticmethod

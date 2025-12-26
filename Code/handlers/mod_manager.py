@@ -1,5 +1,6 @@
 import atexit
 import logging
+import shutil
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -323,6 +324,71 @@ class ModManager:
         del active_mod_id
 
         XMLBuilder.save(xml_obj, user_config_path)
+
+    @staticmethod
+    def sync_workshop_mods() -> bool:
+        game_path = AppConfig.get_game_path()
+        if not game_path:
+            logger.error("Путь к игре не установлен.")
+            return False
+
+        workshop_path_str = AppConfig.get("workshop_sync_path", None)
+        if not workshop_path_str:
+            logger.error("Путь к папке Workshop не указан в настройках.")
+            return False
+
+        workshop_path = Path(workshop_path_str)
+        if not workshop_path.is_dir():
+            logger.error(f"Указанный путь к Workshop не существует: {workshop_path}")
+            return False
+            
+        local_mods_path = game_path / "LocalMods"
+        local_mods_path.mkdir(exist_ok=True)
+
+        changes_made = False
+
+      
+        try:
+
+            workshop_mod_ids = {folder.name for folder in workshop_path.iterdir() if folder.is_dir() and folder.name.isdigit()}
+        except Exception as e:
+            logger.error(f"Не удалось прочитать папку Мастерской: {e}")
+            return False
+
+        for local_mod_folder in local_mods_path.iterdir():
+
+            if local_mod_folder.is_dir() and local_mod_folder.name.isdigit():
+                if local_mod_folder.name not in workshop_mod_ids:
+                    logger.info(f"Удаление мода, от которого отписались: {local_mod_folder.name}")
+                    try:
+                        shutil.rmtree(local_mod_folder)
+                        changes_made = True
+                    except Exception as e:
+                        logger.error(f"Не удалось удалить папку мода {local_mod_folder.name}: {e}")
+
+        current_local_mod_ids = {folder.name for folder in local_mods_path.iterdir() if folder.is_dir()}
+        
+        for mod_id in workshop_mod_ids:
+            if mod_id not in current_local_mod_ids:
+                source_path = workshop_path / mod_id
+                if not (source_path / "filelist.xml").exists():
+                    continue
+
+                destination_path = local_mods_path / mod_id
+                logger.info(f"Найден новый мод: {mod_id}. Копирование...")
+                
+                try:
+                    shutil.copytree(source_path, destination_path)
+                    changes_made = True
+                except Exception as e:
+                    logger.error(f"Не удалось скопировать мод {mod_id}: {e}")
+
+        if not changes_made:
+            logger.info("Синхронизация завершена. Изменений не найдено.")
+        else:
+            logger.info("Синхронизация завершена. Список модов был обновлен.")
+            
+        return changes_made
 
     @staticmethod
     def _on_exit():

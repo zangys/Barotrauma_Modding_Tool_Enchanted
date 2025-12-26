@@ -1,7 +1,6 @@
 import gc
 import logging
 import threading
-
 import dearpygui.dearpygui as dpg
 
 from Code.handlers import ModManager

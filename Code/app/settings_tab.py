@@ -61,6 +61,20 @@ class SettingsTab:
             )
 
             dpg.add_separator()
+            dpg.add_text(
+                loc.get_string("label-workshop-sync-path"),
+                color=(200, 200, 250),
+                wrap=0,
+            )
+            
+            dpg.add_input_text(
+                hint=loc.get_string("hint-workshop-sync-path"),
+                callback=lambda s, a: AppConfig.set("workshop_sync_path", a),
+                default_value=AppConfig.get("workshop_sync_path", ""),
+                tag="workshop_sync_path_input",
+                width=300,
+            )
+            dpg.add_separator()
             dpg.add_separator()
 
             dpg.add_text(
