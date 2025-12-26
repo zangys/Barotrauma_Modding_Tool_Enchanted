@@ -8,7 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import List
-
+import shutil
 import requests
 
 from Code.app_vars import AppConfig
@@ -94,15 +94,34 @@ class Game:
     @staticmethod
     def run_exec(parms: List[str] = []):
         try:
+            # Для Linux и macOS всегда запускаем через Steam
             if platform.system() in ["Linux", "Darwin"]:
-                APP_ID = "602960" # AppID  Barotrauma
+                APP_ID = "602960"
+                steam_path = shutil.which("steam")
 
-                command = ["steam", "-applaunch", APP_ID] + parms
+                if steam_path is None:
+                    logger.error("Steam executable not found in PATH.")
+                    return
 
-                subprocess.Popen(command)
-                logger.info(f"Launching the game via Steam with parameters: {' '.join(parms)}")
-                return 
+                command = [steam_path, "-applaunch", APP_ID] + parms
+                
+                # НАЧАЛО КЛЮЧЕВЫХ ИЗМЕНЕНИЙ: Очищаем окружение
+                # Копируем текущее окружение
+                env = os.environ.copy()
+                
+                # Удаляем переменную LD_LIBRARY_PATH, если она есть.
+                # Именно она мешает запуску внешних программ из-под PyInstaller.
+                if 'LD_LIBRARY_PATH' in env:
+                    del env['LD_LIBRARY_PATH']
+                
+                # Запускаем Steam с очищенным окружением
+                subprocess.Popen(command, env=env)
+                # КОНЕЦ КЛЮЧЕВЫХ ИЗМЕНЕНИЙ
+                
+                logger.info(f"Launching game via Steam with parameters: {' '.join(parms)}")
+                return
 
+            # Логика для Windows остается без изменений
             exec_file = Game._EXECUTABLES.get(platform.system())
             if exec_file is None:
                 raise RuntimeError("Unknown operating system")
@@ -115,13 +134,13 @@ class Game:
             if not executable_path.exists():
                 logger.error(f"Executable not found: {executable_path}")
                 return
+
             subprocess.Popen([str(executable_path)] + parms, cwd=str(game_path))
-            logger.info(f"Launch the game directly with parameters: {' '.join(parms)}")
+            logger.info(f"Launching game directly with parameters: {' '.join(parms)}")
 
         except Exception as e:
             logger.error(f"Error running the game: {e}")
-
-    @staticmethod
+    
     def search_all_games_on_all_drives() -> List[Path]:
         game_name = "barotrauma"
 
