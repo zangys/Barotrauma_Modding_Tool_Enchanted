@@ -24,6 +24,7 @@ This version includes all the great features of the original, plus:
 
 - **Full Linux Support**: The issue where the game would fail to launch from the tool on Linux has been completely fixed. The app now uses Steam to launch the game, ensuring the correct environment and full compatibility.
 
+- **And another**: Sorry, but I'm not eager to update the description after each release, so if you're interested in the features, read the releases.
 ### Installation
 
 The easiest way to get started is to download a ready-to-use version.
@@ -88,6 +89,7 @@ This project is licensed under the GPL-3.0 License. See the [LICENSE](./LICENSE)
 - **Кнопка "Активировать все"**: Устали перетаскивать десятки модов по одному? Активируйте всю вашу коллекцию модов одним нажатием.
 
 - **Полная поддержка Linux**: Проблема, из-за которой игра не запускалась из инструмента в Linux, была полностью исправлена. Приложение теперь использует Steam для запуска игры, обеспечивая правильное окружение и полную совместимость.
+- **И другое**: Простите но я не горю желанием обновлять описание после каждого релиза так что если вас интересуют возможности почитайте релизы
 
 ### Установка
 

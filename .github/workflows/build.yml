@@ -1,7 +1,8 @@
 name: Manual Build
 
-on: workflow_dispatch
-
+on:
+  workflow_dispatch:
+  
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -48,21 +49,9 @@ jobs:
             --name BMTE \
             --add-data "Data${{ matrix.separator }}Data"
 
-      - name: Create ZIP archive (Windows)
-        if: matrix.os == 'windows-latest'
-        working-directory: dist
-        run: |
-          Compress-Archive -Path ./BMTE -DestinationPath ../${{ matrix.asset_name }}-${{ github.event.inputs.version }}.zip
-
-      - name: Create ZIP archive (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: dist
-        run: |
-          zip -r ../${{ matrix.asset_name }}-${{ github.event.inputs.version }}.zip ./BMTE
-
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}-${{ github.event.inputs.version }}
-          path: ./${{ matrix.asset_name }}-${{ github.event.inputs.version }}.zip
+          name: ${{ matrix.asset_name }}
+          path: dist/BMTE/
           retention-days: 30
