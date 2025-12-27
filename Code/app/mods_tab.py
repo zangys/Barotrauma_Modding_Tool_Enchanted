@@ -14,34 +14,38 @@ class ModsTab:
     inactive_mod_search_text = ""
 
     @staticmethod
-    def on_sync_mods_clicked():
-        import threading
-        
-        def run_sync():
-            try:
-                dpg.configure_item("sync_workshop_button", enabled=False)
-                dpg.set_value("sync_status_text", loc.get_string("status-sync-running") if loc.has_string("status-sync-running") else "Syncing...")
-                
-                logging.info("Начинаем синхронизацию модов (фоновый поток)...")
-                changes_were_made = ModManager.sync_workshop_mods()
-                
-                if changes_were_made:
-                    logging.info("Изменения найдены, перезагружаем список модов.")
-                    ModManager.load_mods()
-                    ModsTab.render_mods()
-                    dpg.set_value("sync_status_text", loc.get_string("status-sync-done") if loc.has_string("status-sync-done") else "Sync complete")
-                else:
-                    logging.info("Изменений не найдено.")
-                    dpg.set_value("sync_status_text", loc.get_string("status-sync-no-new") if loc.has_string("status-sync-no-new") else "No changes")
-            
-            except Exception as e:
-                logging.error(f"Ошибка при синхронизации: {e}")
-                dpg.set_value("sync_status_text", f"Error: {e}")
-            
-            finally:
-                dpg.configure_item("sync_workshop_button", enabled=True)
+    def on_reload_mods_clicked():
 
-        threading.Thread(target=run_sync, daemon=True).start()
+        logging.info("Начинаем полное обновление списка модов...")
+
+        ModManager.load_mods()
+
+        ModsTab.render_mods()
+        
+        logging.info("Обновление списка модов завершено.")
+
+    @staticmethod
+    def _run_reload_and_render():
+
+        try:
+            ModManager.load_mods()
+
+            App.ui_tasks_queue.put(ModsTab._finalize_reload)
+
+        except Exception as e:
+            logging.error(f"Ошибка во время перезагрузки модов: {e}", exc_info=True)
+            App.ui_tasks_queue.put(ModsTab._finalize_reload_with_error)
+            
+    @staticmethod
+    def _finalize_reload():
+        ModsTab.render_mods()
+        dpg.set_value("reload_status_text", "Готово!")
+        dpg.configure_item("reload_mods_button", enabled=True)
+
+    @staticmethod
+    def _finalize_reload_with_error():
+        dpg.set_value("reload_status_text", "Ошибка!")
+        dpg.configure_item("reload_mods_button", enabled=True)
 
     @staticmethod
     def on_activate_all_clicked():
@@ -71,6 +75,7 @@ class ModsTab:
             label=loc.get_string("mod-tab-label"), parent="main_tab_bar", tag="mod_tab"
         ):
             with dpg.group(horizontal=True):
+                # Кнопка 1: Сортировать
                 dpg.add_button(
                     label=loc.get_string("btn-sort-mods"),
                     callback=ModsTab.sort_active_mods,
@@ -79,23 +84,26 @@ class ModsTab:
                 with dpg.tooltip("sort_button"):
                     dpg.add_text(loc.get_string("btn-sort-mods-desc"))
 
+                # Кнопка 2: Активировать все
                 dpg.add_button(
-                label=loc.get_string("btn-activate-all"),
-                callback=ModsTab.on_activate_all_clicked,
-                tag="activate_all_button",
-            )
-            with dpg.tooltip("activate_all_button"):
-                dpg.add_text(loc.get_string("btn-activate-all-desc"))
-
-            dpg.add_button(
-                    label=loc.get_string("btn-sync-workshop"),
-                    callback=ModsTab.on_sync_mods_clicked,
-                    tag="sync_workshop_button"
+                    label=loc.get_string("btn-activate-all"),
+                    callback=ModsTab.on_activate_all_clicked,
+                    tag="activate_all_button",
                 )
-            with dpg.tooltip("sync_workshop_button"):
-                dpg.add_text(loc.get_string("tooltip-sync-workshop"))
+                with dpg.tooltip("activate_all_button"):
+                    dpg.add_text(loc.get_string("btn-activate-all-desc"))
 
-            dpg.add_text("", tag="sync_status_text")
+                # Кнопка 3: Обновить список (бывшая "Синхронизировать")
+                dpg.add_button(
+                    label=loc.get_string("btn-sync-workshop"), # Можно переименовать в "btn-reload-mods"
+                    callback=ModsTab.on_reload_mods_clicked,
+                    tag="reload_mods_button"
+                )
+                with dpg.tooltip("reload_mods_button"):
+                    dpg.add_text(loc.get_string("tooltip-sync-workshop")) # Можно изменить на "tooltip-reload-mods"
+
+                # Метка статуса для кнопки Обновить
+                dpg.add_text("", tag="reload_status_text")
 
             with dpg.group(horizontal=True):
                 dpg.add_text(

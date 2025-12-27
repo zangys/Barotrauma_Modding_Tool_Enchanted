@@ -35,114 +35,79 @@ class ModManager:
 
         ModManager.active_mods.clear()
         ModManager.inactive_mods.clear()
-        ModManager.load_active_mods(game_path / "config_player.xml")
-        inactive_mods_dir = AppConfig.get("steam_mod_dir", None)
-        if inactive_mods_dir:
-            inactive_mods_dir = Path(inactive_mods_dir)
-            ModManager.load_inactive_mods(inactive_mods_dir)
 
-        ModManager.load_inactive_mods((game_path / "LocalMods"))
+        active_mod_configs = ModManager._get_active_mod_configs(game_path / "config_player.xml")
+
+        all_mods = {}
+
+        def process_mod_folder(path: Path):
+            if not path or not path.is_dir() or path.name.startswith('.'):
+                return
+            if not (path / "filelist.xml").exists():
+                logger.debug(f"Пропускаем папку без filelist.xml: {path}")
+                return
+            
+            try:
+                mod = ModUnit.build(path)
+                if mod:
+                    all_mods[mod.id] = mod
+            except Exception as e:
+                logger.error(f"Ошибка при обработке папки мода {path.name}: {e}")
+
+        scan_paths = [game_path / "LocalMods"]
+        workshop_content_path_str = AppConfig.get("workshop_sync_path")
+        if workshop_content_path_str:
+            scan_paths.append(Path(workshop_content_path_str))
+        legacy_workshop_path_str = AppConfig.get("steam_mod_dir")
+        if legacy_workshop_path_str:
+            scan_paths.append(Path(legacy_workshop_path_str))
+
+        for path in scan_paths:
+            if path and path.exists():
+                for mod_folder in path.iterdir():
+                    process_mod_folder(mod_folder)
+
+        for mod_id, mod in all_mods.items():
+            if mod_id in active_mod_configs:
+                mod.load_order = active_mod_configs[mod_id]
+                ModManager.active_mods.append(mod)
+            else:
+                ModManager.inactive_mods.append(mod)
+
+        ModManager.active_mods.sort(key=lambda m: m.load_order)
 
     @staticmethod
-    def load_active_mods(path_to_config_player: Path):
+    def _get_active_mod_configs(path_to_config_player: Path) -> dict:
+        """Вспомогательный метод: читает config_player.xml и возвращает словарь {mod_id: load_order}."""
         if not path_to_config_player.exists():
-            logger.error(
-                f"config_player.xml path doesn't exist!\n|Path: {path_to_config_player}"
-            )
-            return
+            return {}
 
         xml_obj = XMLBuilder.load(path_to_config_player)
-        if xml_obj is None:
-            logger.error(f"Invalid config_player.xml!\n|Path: {path_to_config_player}")
-            return
+        if not xml_obj:
+            return {}
+
+        active_mod_configs = {}
 
         packages = xml_obj.find_only_elements("package")
-
         package_paths = [
-            (i, package.attributes.get("path", None))
+            (i, package.attributes.get("path"))
             for i, package in enumerate(packages, start=1)
-            if package.tag == "package" and package.attributes.get("path", None)
+            if package.tag == "package" and package.attributes.get("path")
         ]
 
-        def process_package(index, path):
+        for index, path_str in package_paths:
             try:
-                path = Path(path).parent
-                if path.parts[0] == "LocalMods":
-                    new_path = AppConfig.get("barotrauma_dir", None)
-                    if new_path is None:
-                        raise ValueError("Game dir not set!")
 
-                    path = Path(new_path / path)
+                mod_folder_name = Path(path_str).parent.name
 
-                mod = ModUnit.build(path)
-                if mod is None:
-                    return None
+                if mod_folder_name.isdigit():
+                    active_mod_configs[mod_folder_name] = index
+                else:
+                    pass # TODO: Improve LocalMod ID detection
+            except Exception:
+                continue # Игнорируем некорректные пути
 
-                mod.load_order = index
-                return mod
-
-            except Exception as err:
-                logger.error(err)
-                return None
-
-        with ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(process_package, index, path)
-                for index, path in package_paths
-            ]
-
-            for future in as_completed(futures):
-                mod = future.result()
-                if mod is not None:
-                    ModManager.active_mods.append(mod)
-
-        ModManager.active_mods.sort(key=lambda m: m.load_order)  # type: ignore
-        for index, mod in enumerate(ModManager.active_mods, start=1):
-            mod.load_order = index
-
-    @staticmethod
-    def load_inactive_mods(path_to_all_mods: Path):
-        if not path_to_all_mods.exists():
-            logger.error(f"Dir not exists!\n|Path: {path_to_all_mods}")
-            return
-
-        package_paths = [
-            path
-            for path in Path(path_to_all_mods).iterdir()
-            if path.is_dir() and not path.name.startswith(".")
-        ]
-
-        def process_package(path: Path):
-            try:
-                if path.parts[0] == "LocalMods":
-                    new_path = AppConfig.get("barotrauma_dir", None)
-                    if new_path is None:
-                        raise ValueError("Game dir not set!")
-
-                    path = Path(new_path / path)
-
-                mod = ModUnit.build(path)
-                if mod is None:
-                    return None
-
-                return mod
-
-            except Exception as err:
-                logger.error(err)
-                return None
-
-        all_mods_ids = {
-            mod.id for mod in ModManager.active_mods + ModManager.inactive_mods
-        }
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(process_package, path) for path in package_paths]
-            for future in as_completed(futures):
-                mod = future.result()
-                if mod is not None:
-                    if mod.id in all_mods_ids:
-                        continue
-
-                    ModManager.inactive_mods.append(mod)
+        return active_mod_configs
 
     @staticmethod
     def load_cslua_config():
@@ -324,87 +289,6 @@ class ModManager:
         del active_mod_id
 
         XMLBuilder.save(xml_obj, user_config_path)
-
-    @staticmethod
-    def sync_workshop_mods() -> bool:
-        game_path = AppConfig.get_game_path()
-        if not game_path:
-            logger.error("Путь к игре не установлен.")
-            return False
-
-        workshop_path_str = AppConfig.get("workshop_sync_path", None)
-        if not workshop_path_str:
-            logger.error("Путь к папке Workshop не указан в настройках.")
-            return False
-
-        workshop_path = Path(workshop_path_str)
-        if not workshop_path.is_dir():
-            logger.error(f"Указанный путь к Workshop не существует: {workshop_path}")
-            return False
-            
-        local_mods_path = game_path / "LocalMods"
-        local_mods_path.mkdir(exist_ok=True)
-
-        changes_made = False
-        
-        try:
-            workshop_mod_ids = {folder.name for folder in workshop_path.iterdir() if folder.is_dir() and folder.name.isdigit()}
-        except Exception as e:
-            logger.error(f"Не удалось прочитать папку Мастерской: {e}")
-            return False
-
-        mods_to_delete = []
-        for local_mod_folder in local_mods_path.iterdir():
-            if local_mod_folder.is_dir() and local_mod_folder.name.isdigit():
-                if local_mod_folder.name not in workshop_mod_ids:
-                    mods_to_delete.append(local_mod_folder)
-
-        if mods_to_delete:
-            def delete_mod(path):
-                logger.info(f"Удаление мода, от которого отписались: {path.name}")
-                try:
-                    shutil.rmtree(path)
-                    return True
-                except Exception as e:
-                    logger.error(f"Не удалось удалить папку мода {path.name}: {e}")
-                    return False
-
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(delete_mod, mods_to_delete))
-                if any(results):
-                    changes_made = True
-
-        current_local_mod_ids = {folder.name for folder in local_mods_path.iterdir() if folder.is_dir()}
-
-        mods_to_copy = []
-        for mod_id in workshop_mod_ids:
-            if mod_id not in current_local_mod_ids:
-                source_path = workshop_path / mod_id
-                if (source_path / "filelist.xml").exists():
-                    mods_to_copy.append((source_path, local_mods_path / mod_id))
-
-        if mods_to_copy:
-            def copy_mod(paths):
-                src, dst = paths
-                logger.info(f"Найден новый мод: {src.name}. Копирование...")
-                try:
-                    shutil.copytree(src, dst)
-                    return True
-                except Exception as e:
-                    logger.error(f"Не удалось скопировать мод {src.name}: {e}")
-                    return False
-
-            with ThreadPoolExecutor() as executor:
-                results = list(executor.map(copy_mod, mods_to_copy))
-                if any(results):
-                    changes_made = True
-
-        if not changes_made:
-            logger.info("Синхронизация завершена. Изменений не найдено.")
-        else:
-            logger.info("Синхронизация завершена. Список модов был обновлен.")
-            
-        return changes_made
 
     @staticmethod
     def _on_exit():
